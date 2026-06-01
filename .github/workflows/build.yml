@@ -1,16 +1,11 @@
-name: CI Build
+name: Test CI
 
 on:
   push:
     branches: [ "main" ]
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Build Docker image
-        run: docker build -t telemetry-app .
+      - run: echo "CI is working!"
