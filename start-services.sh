@@ -27,6 +27,13 @@ echo "starting simulated MCU"
 python3 /workspace/build/simulated-mcu.py &
 pids+=("$!")
 
+# Give the MCU a moment to write the first packet before we open shm
+sleep 1
+
+echo "starting telemetry forwarder"
+/workspace/build/telemetry_forwarder /workspace/build/telemetry_config.json &
+pids+=("$!")
+
 wait -n "${pids[@]}"
 exit_code=$?
 
