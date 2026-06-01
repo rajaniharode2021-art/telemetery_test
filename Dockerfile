@@ -25,6 +25,9 @@ RUN printf '%s\n' \
     > /etc/mosquitto/mosquitto.conf
 
 RUN mkdir -p /workspace/build
+COPY . /workspace
+RUN gcc /workspace/telemetry_forwarder.c -o /workspace/build/telemetry_forwarder
+
 COPY simulated-mcu.py log-server.py telemetry_config.json /workspace/build/
 COPY start-services.sh /usr/local/bin/start-services
 RUN chmod +x /usr/local/bin/start-services
