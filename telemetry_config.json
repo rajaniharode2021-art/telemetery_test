@@ -1,0 +1,71 @@
+{
+  "shm": {
+    "name": "/data",
+    "path": "/dev/shm/data",
+    "size_bytes": 26
+  },
+  "packet": {
+    "byte_order": "little",
+    "size_bytes": 26,
+    "magic": {
+      "value": 57005,
+      "hex": "0xDEAD",
+      "description": "Packet validation marker; invalid reads are discarded"
+    },
+    "fields": [
+      {
+        "name": "magic",
+        "offset": 0,
+        "size_bytes": 2,
+        "type": "uint16",
+        "description": "Magic number; must match magic.hex"
+      },
+      {
+        "name": "seq",
+        "offset": 2,
+        "size_bytes": 4,
+        "type": "uint32",
+        "description": "Monotonically increasing sequence number (may wrap at 2^32)"
+      },
+      {
+        "name": "timestamp",
+        "offset": 6,
+        "size_bytes": 4,
+        "type": "uint32",
+        "unit": "milliseconds",
+        "description": "Unix epoch time in milliseconds (CLOCK_REALTIME)"
+      },
+      {
+        "name": "speed",
+        "offset": 10,
+        "size_bytes": 4,
+        "type": "float32",
+        "unit": "km/h",
+        "description": "Vehicle speed"
+      },
+      {
+        "name": "batt_volt",
+        "offset": 14,
+        "size_bytes": 4,
+        "type": "float32",
+        "unit": "volts",
+        "description": "Battery voltage"
+      },
+      {
+        "name": "fault",
+        "offset": 18,
+        "size_bytes": 2,
+        "type": "uint16",
+        "description": "Fault code bitmask; 0x0001 indicates a fault when seq is divisible by 50"
+      },
+      {
+        "name": "software_version",
+        "offset": 20,
+        "size_bytes": 6,
+        "type": "string",
+        "encoding": "ascii",
+        "description": "Software version string (e.g. \"1.0.0\")"
+      }
+    ]
+  }
+}
