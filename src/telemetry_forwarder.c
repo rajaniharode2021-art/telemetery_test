@@ -21,6 +21,7 @@ typedef struct {
 } Packet;
 
 int main() {
+    printf("hello from main code");
     int fd = open(SHM_PATH, O_RDONLY);
     if (fd < 0) {
         perror("open");
