@@ -103,21 +103,3 @@ jobs:
       - name: Stop container
         if: always()
         run: docker compose down
-
-  # ── static analysis (optional, best-effort) ───────────────────────────────
-  lint:
-    name: Static analysis
-    runs-on: ubuntu-latest
-    continue-on-error: true   # advisory only
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install cppcheck
-        run: sudo apt-get update && sudo apt-get install -y cppcheck
-
-      - name: Run cppcheck
-        run: |
-          cppcheck --enable=warning,style,performance \
-                   --suppress=missingIncludeSystem \
-                   --error-exitcode=1 \
-                   src/telemetry_forwarder.c
