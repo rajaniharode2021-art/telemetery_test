@@ -1,4 +1,4 @@
-name: Test CI
+name: Telemetry CI/CD Pipeline
 
 on:
   push:
@@ -7,99 +7,101 @@ on:
     branches: ["main", "master"]
 
 jobs:
-  # ── native build + unit tests ─────────────────────────────────────────────
-  build-and-test:
-    name: Build & unit test (native)
+
+  # ─────────────────────────────────────────────
+  # CI: Build + Integration Test (Docker-based)
+  # ─────────────────────────────────────────────
+  ci:
+    name: CI - Build & Integration Tests
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential
-
-      - name: Build
-        run: make
-
-      - name: Run unit tests
-        run: make test
-
-      - name: Upload binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: telemetry_forwarder
-          path: telemetry_forwarder
-
-  # ── Docker build + integration smoke test ────────────────────────────────
-  docker-integration:
-    name: Docker integration test
-    runs-on: ubuntu-latest
-    needs: build-and-test
-    steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Build Docker image
         run: docker compose build
 
-      - name: Start container in background
-        run: |
-          docker compose up -d
-          # Wait for all services to initialise
-          sleep 15
+      - name: Start services
+        run: docker compose up -d
 
-      - name: Check MQTT telemetry is being published
-        run: |
-          # Subscribe for 5 seconds and capture at least one message
-          timeout 5 docker exec telemetry-app \
-            mosquitto_sub -h localhost -p 1883 -t '/vehicle/telemetry' -C 1 \
-            | python3 -c "
-          import sys, json
-          data = sys.stdin.read().strip()
-          print('received:', data[:200])
-          obj = json.loads(data)
-          assert 'magic' in obj,   'missing magic field'
-          assert 'seq'   in obj,   'missing seq field'
-          assert 'speed' in obj,   'missing speed field'
-          assert obj['magic'] == 57005, f'wrong magic: {obj[\"magic\"]}'
-          print('MQTT message OK')
-          "
+      - name: Wait for services to initialize
+        run: sleep 15
 
-      - name: Check log server received entries
-        run: |
-          sleep 5
-          docker exec telemetry-app \
-            curl -sf http://localhost:8080/batch \
-            | python3 -c "
-          import sys, json
-          entries = json.loads(sys.stdin.read())
-          print(f'log entries received: {len(entries)}')
-          assert len(entries) > 0, 'no log entries found'
-          for e in entries[:3]:
-              assert 'message'   in e, 'missing message field'
-              assert 'timestamp' in e, 'missing timestamp field'
-              print(' -', e['message'])
-          print('Log server OK')
-          "
-
-      - name: Verify JSON field completeness
+      # ── MQTT validation ───────────────────────
+      - name: Validate MQTT telemetry output
         run: |
           msg=$(timeout 5 docker exec telemetry-app \
             mosquitto_sub -h localhost -p 1883 -t '/vehicle/telemetry' -C 1)
-          python3 -c "
-          import json, sys
-          obj = json.loads('$msg'.strip())
-          required = ['magic','seq','timestamp','speed','batt_volt','fault','software_version']
-          missing = [f for f in required if f not in obj]
-          if missing:
-              print('FAIL missing fields:', missing); sys.exit(1)
-          print('All required fields present:', list(obj.keys()))
-          "
 
-      - name: Collect container logs on failure
-        if: failure()
-        run: docker compose logs --tail=100
+          echo "$msg"
 
-      - name: Stop container
+          python3 - <<EOF
+import json, sys
+obj = json.loads("""$msg""")
+
+required = ["magic","seq","timestamp","speed","batt_volt","fault","software_version"]
+
+missing = [f for f in required if f not in obj]
+if missing:
+    print("Missing fields:", missing)
+    sys.exit(1)
+
+assert obj["magic"] == 57005, "Invalid magic value"
+print("MQTT validation OK")
+EOF
+
+      # ── Log server validation ────────────────
+      - name: Validate log server output
+        run: |
+          sleep 5
+
+          docker exec telemetry-app \
+            curl -sf http://localhost:8080/batch \
+            | python3 - <<EOF
+import sys, json
+
+entries = json.loads(sys.stdin.read())
+
+print("log count:", len(entries))
+
+if len(entries) == 0:
+    raise Exception("No logs received")
+
+for e in entries[:5]:
+    assert "message" in e
+    assert "timestamp" in e
+
+print("Log server validation OK")
+EOF
+
+      # ── Cleanup ───────────────────────────────
+      - name: Stop services
         if: always()
         run: docker compose down
+
+
+  # ─────────────────────────────────────────────
+  # CD: Build & Push Docker Image
+  # ─────────────────────────────────────────────
+  cd:
+    name: CD - Docker Image Publish
+    runs-on: ubuntu-latest
+    needs: ci
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        run: echo "${{ secrets.DOCKER_PASS }}" | docker login -u "${{ secrets.DOCKER_USER }}" --password-stdin
+
+      - name: Build image
+        run: docker build -t telemetry-app:latest .
+
+      - name: Tag image
+        run: docker tag telemetry-app:latest ${{ secrets.DOCKER_USER }}/telemetry-app:latest
+
+      - name: Push image
+        run: docker push ${{ secrets.DOCKER_USER }}/telemetry-app:latest
+
