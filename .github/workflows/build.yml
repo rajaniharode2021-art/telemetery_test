@@ -38,10 +38,10 @@ jobs:
 
           echo "$msg"
 
-          python3 -c "
+          echo "$msg" | python3 -c "
 import json, sys
 
-obj = json.loads('''$msg''')
+obj = json.loads(sys.stdin.read())
 
 required = ['magic','seq','timestamp','speed','batt_volt','fault','software_version']
 
@@ -63,10 +63,10 @@ print('MQTT validation OK')
 
           entries=$(docker exec telemetry-app curl -sf http://localhost:8080/batch)
 
-          python3 -c "
+          echo "$entries" | python3 -c "
 import json, sys
 
-entries = json.loads('''$entries''')
+entries = json.loads(sys.stdin.read())
 
 print('log count:', len(entries))
 
