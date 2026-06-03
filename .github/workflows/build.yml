@@ -33,52 +33,43 @@ jobs:
       # ─────────────────────────────
       - name: Validate MQTT telemetry output
         run: |
+          cat > /tmp/validate_mqtt.py << 'PYEOF'
+          import json, sys
+          obj = json.loads(sys.stdin.read())
+          required = ['magic','seq','timestamp','speed','batt_volt','fault','software_version']
+          missing = [f for f in required if f not in obj]
+          if missing:
+              print('Missing fields:', missing)
+              sys.exit(1)
+          assert obj['magic'] == 57005, 'Invalid magic value'
+          print('MQTT validation OK')
+          PYEOF
+
           msg=$(timeout 5 docker exec telemetry-app \
             mosquitto_sub -h localhost -p 1883 -t '/vehicle/telemetry' -C 1)
-
           echo "$msg"
-
-          echo "$msg" | python3 -c "
-import json, sys
-
-obj = json.loads(sys.stdin.read())
-
-required = ['magic','seq','timestamp','speed','batt_volt','fault','software_version']
-
-missing = [f for f in required if f not in obj]
-if missing:
-    print('Missing fields:', missing)
-    sys.exit(1)
-
-assert obj['magic'] == 57005, 'Invalid magic value'
-print('MQTT validation OK')
-"
+          echo "$msg" | python3 /tmp/validate_mqtt.py
 
       # ─────────────────────────────
       # Log server validation
       # ─────────────────────────────
       - name: Validate log server output
         run: |
+          cat > /tmp/validate_logs.py << 'PYEOF'
+          import json, sys
+          entries = json.loads(sys.stdin.read())
+          print('log count:', len(entries))
+          if len(entries) == 0:
+              raise Exception('No logs received')
+          for e in entries[:5]:
+              assert 'message' in e
+              assert 'timestamp' in e
+          print('Log server validation OK')
+          PYEOF
+
           sleep 5
-
           entries=$(docker exec telemetry-app curl -sf http://localhost:8080/batch)
-
-          echo "$entries" | python3 -c "
-import json, sys
-
-entries = json.loads(sys.stdin.read())
-
-print('log count:', len(entries))
-
-if len(entries) == 0:
-    raise Exception('No logs received')
-
-for e in entries[:5]:
-    assert 'message' in e
-    assert 'timestamp' in e
-
-print('Log server validation OK')
-"
+          echo "$entries" | python3 /tmp/validate_logs.py
 
       # ─────────────────────────────
       # Cleanup
